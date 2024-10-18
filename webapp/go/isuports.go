@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/gofrs/flock"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -101,7 +102,7 @@ func createTenantDB(id int64) error {
 
 // システム全体で一意なIDを生成する
 func dispenseID(ctx context.Context) (string, error) {
-	var id int64
+	/* var id int64
 	var lastErr error
 	for i := 0; i < 100; i++ {
 		var ret sql.Result
@@ -122,7 +123,12 @@ func dispenseID(ctx context.Context) (string, error) {
 	if id != 0 {
 		return fmt.Sprintf("%x", id), nil
 	}
-	return "", lastErr
+	return "", lastErr */
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", fmt.Errorf("error generating UUID: %w", err)
+	}
+	return fmt.Sprintf("%s", id), nil
 }
 
 // 全APIにCache-Control: privateを設定する
