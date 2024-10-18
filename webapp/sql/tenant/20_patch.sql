@@ -1,0 +1,2 @@
+CREATE INDEX idx_tenant_id_competition_id_player_id_row_num ON player_score (tenant_id, competition_id, player_id, row_num);
+CREATE INDEX idx_tenant_id_competition_id_row_num ON player_score (tenant_id, competition_id, row_num);
