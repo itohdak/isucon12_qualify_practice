@@ -112,7 +112,7 @@ func dispenseID(ctx context.Context) (string, error) {
 // 全APIにCache-Control: privateを設定する
 func SetCacheControlPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		c.Response().Header().Set(echo.HeaderCacheControl, "private")
+		c.Response().Header().Set(echo.HeaderCacheControl, "public")
 		return next(c)
 	}
 }
