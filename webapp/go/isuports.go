@@ -366,6 +366,19 @@ func retrievePlayer(ctx context.Context, tenantDB dbOrTx, id string) (*PlayerRow
 	return &p, nil
 }
 
+func retrievePlayers(ctx context.Context, tenantDB dbOrTx, ids []string) ([]PlayerRow, error) {
+	sql := `SELECT * FROM player WHERE id IN (?)`
+	sql, params, err := sqlx.In(sql, ids)
+	if err != nil {
+		return nil, fmt.Errorf("error prapare in query: ids=%v, %w", ids, err)
+	}
+	var prs []PlayerRow
+	if err := tenantDB.SelectContext(ctx, &prs, sql, params...); err != nil {
+		return nil, fmt.Errorf("error Select players: ids=%v, %w", ids, err)
+	}
+	return prs, nil
+}
+
 // 参加者を認可する
 // 参加者向けAPIで呼ばれる
 func authorizePlayer(ctx context.Context, tenantDB dbOrTx, id string) error {
@@ -782,7 +795,49 @@ func playersAddHandler(c echo.Context) error {
 	displayNames := params["display_name[]"]
 
 	pds := make([]PlayerDetail, 0, len(displayNames))
+	players := []PlayerRow{}
+	now := time.Now().Unix()
 	for _, displayName := range displayNames {
+		id, err := dispenseID(ctx)
+		if err != nil {
+			return fmt.Errorf("error dispenseID: %w", err)
+		}
+		players = append(players, PlayerRow{
+			ID:             id,
+			TenantID:       v.tenantID,
+			DisplayName:    displayName,
+			IsDisqualified: false,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		})
+	}
+	if _, err := tenantDB.NamedExecContext(
+		ctx,
+		"INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at)"+
+			"VALUES (:id, :tenant_id, :display_name, :is_disqualified, :created_at, :updated_at)",
+		players,
+	); err != nil {
+		return fmt.Errorf(
+			"error bulk Insert player at tenantDB",
+		)
+	}
+	ids := []string{}
+	for _, player := range players {
+		ids = append(ids, player.ID)
+	}
+	prs, err := retrievePlayers(ctx, tenantDB, ids)
+	if err != nil {
+		return fmt.Errorf("error retrievePlayers: %w", err)
+	}
+	for _, p := range prs {
+		pds = append(pds, PlayerDetail{
+			ID:             p.ID,
+			DisplayName:    p.DisplayName,
+			IsDisqualified: p.IsDisqualified,
+		})
+	}
+
+	/* for _, displayName := range displayNames {
 		id, err := dispenseID(ctx)
 		if err != nil {
 			return fmt.Errorf("error dispenseID: %w", err)
@@ -808,7 +863,7 @@ func playersAddHandler(c echo.Context) error {
 			DisplayName:    p.DisplayName,
 			IsDisqualified: p.IsDisqualified,
 		})
-	}
+	} */
 
 	res := PlayersAddHandlerResult{
 		Players: pds,
