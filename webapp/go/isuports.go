@@ -50,6 +50,8 @@ var (
 	adminDB *sqlx.DB
 
 	sqliteDriverName = "sqlite3"
+
+	playerCache = map[string]PlayerRow{}
 )
 
 // 環境変数を取得する、なければデフォルト値を返す
@@ -359,15 +361,27 @@ type PlayerRow struct {
 
 // 参加者を取得する
 func retrievePlayer(ctx context.Context, tenantDB dbOrTx, id string) (*PlayerRow, error) {
+	if p, ok := playerCache[id]; ok {
+		return &p, nil
+	}
 	var p PlayerRow
 	if err := tenantDB.GetContext(ctx, &p, "SELECT * FROM player WHERE id = ?", id); err != nil {
 		return nil, fmt.Errorf("error Select player: id=%s, %w", id, err)
 	}
+	playerCache[id] = p
 	return &p, nil
 }
 
 func retrievePlayers(ctx context.Context, tenantDB dbOrTx, ids []string) ([]PlayerRow, error) {
-	sql := `SELECT * FROM player WHERE id IN (?)`
+	prs := []PlayerRow{}
+	for _, id := range ids {
+		p, err := retrievePlayer(ctx, tenantDB, id)
+		if err != nil {
+			return nil, fmt.Errorf("error Select players: ids=%v, %w", ids, err)
+		}
+		prs = append(prs, *p)
+	}
+	/* sql := `SELECT * FROM player WHERE id IN (?)`
 	sql, params, err := sqlx.In(sql, ids)
 	if err != nil {
 		return nil, fmt.Errorf("error prapare in query: ids=%v, %w", ids, err)
@@ -375,7 +389,7 @@ func retrievePlayers(ctx context.Context, tenantDB dbOrTx, ids []string) ([]Play
 	var prs []PlayerRow
 	if err := tenantDB.SelectContext(ctx, &prs, sql, params...); err != nil {
 		return nil, fmt.Errorf("error Select players: ids=%v, %w", ids, err)
-	}
+	} */
 	return prs, nil
 }
 
@@ -906,6 +920,7 @@ func playerDisqualifiedHandler(c echo.Context) error {
 			true, now, playerID, err,
 		)
 	}
+	delete(playerCache, playerID)
 	p, err := retrievePlayer(ctx, tenantDB, playerID)
 	if err != nil {
 		// 存在しないプレイヤー
