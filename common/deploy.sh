@@ -8,11 +8,11 @@ fi
 
 # 各種設定ファイルのコピー
 # ../${HOSTNAME}/env.sh があればそちらを優先してコピーする
-if [ -e ../${HOSTNAME}/env.sh ]; then
-  sudo cp -f ../${HOSTNAME}/env.sh /home/isucon/env.sh
-else
-  sudo cp -f env.sh /home/isucon/env.sh
-fi
+# if [ -e ../${HOSTNAME}/env.sh ]; then
+#   sudo cp -f ../${HOSTNAME}/env.sh /home/isucon/env.sh
+# else
+#   sudo cp -f env.sh /home/isucon/env.sh
+# fi
 
 # etc以下のファイルについてすべてコピーする
 for file in `\find etc -type f`; do
