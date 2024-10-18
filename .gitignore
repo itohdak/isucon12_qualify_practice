@@ -32,3 +32,25 @@ env.sh
 
 pprotein
 pprotein-agent
+
+bench/
+blackauth/
+!data/
+initial_data/
+!public/
+!webapp/.gitignore
+!webapp/docker-compose-go.yml
+webapp/docker-compose-java.yml
+webapp/docker-compose-node.yml
+webapp/docker-compose-perl.yml
+webapp/docker-compose-php.yml
+webapp/docker-compose-python.yml
+webapp/docker-compose-ruby.yml
+webapp/docker-compose-rust.yml
+!webapp/go/
+webapp/java/
+webapp/node/
+!webapp/public.pem
+!webapp/specification.md
+!webapp/sql/
+!webapp/tenant_db/
