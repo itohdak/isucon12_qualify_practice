@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -51,6 +52,7 @@ var (
 
 	sqliteDriverName = "sqlite3"
 
+	mu          sync.Mutex
 	playerCache = map[string]PlayerRow{}
 )
 
@@ -368,7 +370,9 @@ func retrievePlayer(ctx context.Context, tenantDB dbOrTx, id string) (*PlayerRow
 	if err := tenantDB.GetContext(ctx, &p, "SELECT * FROM player WHERE id = ?", id); err != nil {
 		return nil, fmt.Errorf("error Select player: id=%s, %w", id, err)
 	}
+	mu.Lock()
 	playerCache[id] = p
+	mu.Unlock()
 	return &p, nil
 }
 
@@ -920,7 +924,9 @@ func playerDisqualifiedHandler(c echo.Context) error {
 			true, now, playerID, err,
 		)
 	}
+	mu.Lock()
 	delete(playerCache, playerID)
+	mu.Unlock()
 	p, err := retrievePlayer(ctx, tenantDB, playerID)
 	if err != nil {
 		// 存在しないプレイヤー
