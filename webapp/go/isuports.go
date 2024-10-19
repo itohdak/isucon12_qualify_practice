@@ -1097,6 +1097,7 @@ func competitionScoreHandler(c echo.Context) error {
 
 	var rowNum int64
 	playerScoreRows := []PlayerScoreRow{}
+	playerScoreRowsMap := map[string]PlayerScoreRow{}
 	for {
 		rowNum++
 		row, err := r.Read()
@@ -1132,7 +1133,7 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("error dispenseID: %w", err)
 		}
 		now := time.Now().Unix()
-		playerScoreRows = append(playerScoreRows, PlayerScoreRow{
+		/* playerScoreRows = append(playerScoreRows, PlayerScoreRow{
 			ID:            id,
 			TenantID:      v.tenantID,
 			PlayerID:      playerID,
@@ -1141,7 +1142,20 @@ func competitionScoreHandler(c echo.Context) error {
 			RowNum:        rowNum,
 			CreatedAt:     now,
 			UpdatedAt:     now,
-		})
+		}) */
+		playerScoreRowsMap[playerID] = PlayerScoreRow{
+			ID:            id,
+			TenantID:      v.tenantID,
+			PlayerID:      playerID,
+			CompetitionID: competitionID,
+			Score:         score,
+			RowNum:        rowNum,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+	}
+	for _, playerScoreRow := range playerScoreRowsMap {
+		playerScoreRows = append(playerScoreRows, playerScoreRow)
 	}
 
 	if _, err := tx.ExecContext(
@@ -1162,19 +1176,6 @@ func competitionScoreHandler(c echo.Context) error {
 			playerScoreRows, err,
 		)
 	}
-	/* for _, ps := range playerScoreRows {
-		if _, err := tx.NamedExecContext(
-			ctx,
-			"INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)",
-			ps,
-		); err != nil {
-			return fmt.Errorf(
-				"error Insert player_score: id=%s, tenant_id=%d, playerID=%s, competitionID=%s, score=%d, rowNum=%d, createdAt=%d, updatedAt=%d, %w",
-				ps.ID, ps.TenantID, ps.PlayerID, ps.CompetitionID, ps.Score, ps.RowNum, ps.CreatedAt, ps.UpdatedAt, err,
-			)
-
-		}
-	} */
 
 	tx.Commit()
 
@@ -1426,6 +1427,7 @@ func competitionRankingHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	pss := []PlayerScoreRow{}
+	// TODO: player_scoreをplayer,tenant,competitionごとにrow_numが最大のものだけを引いてこればよいようにする
 	if err := tx.SelectContext(
 		ctx,
 		&pss,
