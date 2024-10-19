@@ -691,7 +691,6 @@ func tenantsBillingHandler(c echo.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to connectToTenantDB: %w", err)
 			}
-			/* defer tenantDB.Close() */
 			cs := []CompetitionRow{}
 			if err := tenantDB.SelectContext(
 				ctx,
@@ -752,7 +751,6 @@ func playersListHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error connectToTenantDB: %w", err)
 	}
-	/* defer tenantDB.Close() */
 
 	var pls []PlayerRow
 	if err := tenantDB.SelectContext(
@@ -798,7 +796,6 @@ func playersAddHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	params, err := c.FormParams()
 	if err != nil {
@@ -849,34 +846,6 @@ func playersAddHandler(c echo.Context) error {
 		})
 	}
 
-	/* for _, displayName := range displayNames {
-		id, err := dispenseID(ctx)
-		if err != nil {
-			return fmt.Errorf("error dispenseID: %w", err)
-		}
-
-		now := time.Now().Unix()
-		if _, err := tenantDB.ExecContext(
-			ctx,
-			"INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-			id, v.tenantID, displayName, false, now, now,
-		); err != nil {
-			return fmt.Errorf(
-				"error Insert player at tenantDB: id=%s, displayName=%s, isDisqualified=%t, createdAt=%d, updatedAt=%d, %w",
-				id, displayName, false, now, now, err,
-			)
-		}
-		p, err := retrievePlayer(ctx, tenantDB, id)
-		if err != nil {
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
-		pds = append(pds, PlayerDetail{
-			ID:             p.ID,
-			DisplayName:    p.DisplayName,
-			IsDisqualified: p.IsDisqualified,
-		})
-	} */
-
 	res := PlayersAddHandlerResult{
 		Players: pds,
 	}
@@ -903,7 +872,6 @@ func playerDisqualifiedHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	playerID := c.Param("player_id")
 
@@ -963,7 +931,6 @@ func competitionsAddHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	title := c.FormValue("title")
 
@@ -1009,7 +976,6 @@ func competitionFinishHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	id := c.Param("competition_id")
 	if id == "" {
@@ -1059,7 +1025,6 @@ func competitionScoreHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	competitionID := c.Param("competition_id")
 	if competitionID == "" {
@@ -1145,16 +1110,6 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("error dispenseID: %w", err)
 		}
 		now := time.Now().Unix()
-		/* playerScoreRows = append(playerScoreRows, PlayerScoreRow{
-			ID:            id,
-			TenantID:      v.tenantID,
-			PlayerID:      playerID,
-			CompetitionID: competitionID,
-			Score:         score,
-			RowNum:        rowNum,
-			CreatedAt:     now,
-			UpdatedAt:     now,
-		}) */
 		playerScoreRowsMap[playerID] = PlayerScoreRow{
 			ID:            id,
 			TenantID:      v.tenantID,
@@ -1218,7 +1173,6 @@ func billingHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	cs := []CompetitionRow{}
 	if err := tenantDB.SelectContext(
@@ -1275,7 +1229,6 @@ func playerHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
 		return err
@@ -1386,7 +1339,6 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
 		return err
@@ -1439,7 +1391,6 @@ func competitionRankingHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	pss := []PlayerScoreRow{}
-	// TODO: player_scoreをplayer,tenant,competitionごとにrow_numが最大のものだけを引いてこればよいようにする
 	if err := tx.SelectContext(
 		ctx,
 		&pss,
@@ -1527,7 +1478,6 @@ func playerCompetitionsHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
 		return err
@@ -1551,7 +1501,6 @@ func organizerCompetitionsHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	/* defer tenantDB.Close() */
 
 	return competitionsHandler(c, v, tenantDB)
 }
