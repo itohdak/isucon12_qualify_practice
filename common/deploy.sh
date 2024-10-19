@@ -42,6 +42,7 @@ cd /home/isucon/webapp/go/
 
 
 # ミドルウェア・Appの再起動
+sudo systemctl daemon-reload
 sudo systemctl restart mysql
 sudo systemctl restart nginx
 sudo systemctl restart ${APP_NAME}
