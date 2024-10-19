@@ -1444,16 +1444,33 @@ func competitionRankingHandler(c echo.Context) error {
 			continue
 		}
 		scoredPlayerSet[ps.PlayerID] = struct{}{}
-		p, err := retrievePlayer(ctx, tx, ps.PlayerID)
+		/* p, err := retrievePlayer(ctx, tx, ps.PlayerID)
 		if err != nil {
 			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
+		} */
 		ranks = append(ranks, CompetitionRank{
-			Score:             ps.Score,
-			PlayerID:          p.ID,
-			PlayerDisplayName: p.DisplayName,
-			RowNum:            ps.RowNum,
+			Score:    ps.Score,
+			PlayerID: ps.PlayerID,
+			RowNum:   ps.RowNum,
+			// PlayerDisplayName: p.DisplayName,
 		})
+	}
+	playerIDs := []string{}
+	for key, _ := range scoredPlayerSet {
+		playerIDs = append(playerIDs, key)
+	}
+	rows, err := retrievePlayers(ctx, tx, playerIDs)
+	if err != nil {
+		return fmt.Errorf("error retrievePlayers: %w", err)
+	}
+	if len(rows) != len(pss) {
+		return fmt.Errorf("error retrievePlayers: number of record doesn't match")
+	}
+	playerInfo := map[string]PlayerRow{}
+	for _, rank := range ranks {
+		if row, ok := playerInfo[rank.PlayerID]; ok {
+			rank.PlayerDisplayName = row.DisplayName
+		}
 	}
 	sort.Slice(ranks, func(i, j int) bool {
 		if ranks[i].Score == ranks[j].Score {
