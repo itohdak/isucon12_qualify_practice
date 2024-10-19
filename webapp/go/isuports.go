@@ -1181,7 +1181,7 @@ func competitionScoreHandler(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
-		Data:   ScoreHandlerResult{Rows: int64(len(playerScoreRows))},
+		Data:   ScoreHandlerResult{Rows: rowNum - 1},
 	})
 }
 
