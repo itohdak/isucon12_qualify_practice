@@ -1272,16 +1272,6 @@ func playerHandler(c echo.Context) error {
 		return fmt.Errorf("error Select competition with player info: %w", err)
 	}
 
-	cs := []CompetitionRow{}
-	if err := tenantDB.SelectContext(
-		ctx,
-		&cs,
-		"SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC",
-		v.tenantID,
-	); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("error Select competition: %w", err)
-	}
-
 	psds := make([]PlayerScoreDetail, 0, len(psdsFromDB))
 	for _, psdFromDB := range psdsFromDB {
 		psds = append(psds, PlayerScoreDetail{
