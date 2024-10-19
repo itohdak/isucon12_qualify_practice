@@ -1317,6 +1317,14 @@ type CompetitionRank struct {
 	RowNum            int64  `json:"-"` // APIレスポンスのJSONには含まれない
 }
 
+type CompetitionRankFromDB struct {
+	Rank              int64  `db:"rank"`
+	Score             int64  `db:"score"`
+	PlayerID          string `db:"player_id"`
+	PlayerDisplayName string `db:"player_display_name"`
+	RowNum            int64  `db:"row_num"`
+}
+
 type CompetitionRankingHandlerResult struct {
 	Competition CompetitionDetail `json:"competition"`
 	Ranks       []CompetitionRank `json:"ranks"`
@@ -1390,34 +1398,26 @@ func competitionRankingHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	pss := []PlayerScoreRow{}
+	ranksFromDB := []CompetitionRankFromDB{}
 	if err := tx.SelectContext(
 		ctx,
-		&pss,
-		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
+		&ranksFromDB,
+		"SELECT ps.score AS score, ps.player_id AS player_id, p.display_name AS player_display_name, ps.row_num AS row_num"+
+			"	FROM player_score ps, player p"+
+			"	WHERE ps.tenant_id = ? AND competition_id = ? AND ps.player_id = p.id"+
+			"	ORDER BY row_num DESC",
 		tenant.ID,
 		competitionID,
 	); err != nil {
-		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
+		return fmt.Errorf("error Select player_score with player info: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
 	}
-	ranks := make([]CompetitionRank, 0, len(pss))
-	scoredPlayerSet := make(map[string]struct{}, len(pss))
-	for _, ps := range pss {
-		// player_scoreが同一player_id内ではrow_numの降順でソートされているので
-		// 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
-		if _, ok := scoredPlayerSet[ps.PlayerID]; ok {
-			continue
-		}
-		scoredPlayerSet[ps.PlayerID] = struct{}{}
-		p, err := retrievePlayer(ctx, tx, ps.PlayerID)
-		if err != nil {
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
+	ranks := make([]CompetitionRank, 0, len(ranksFromDB))
+	for _, rankFromDB := range ranksFromDB {
 		ranks = append(ranks, CompetitionRank{
-			Score:             ps.Score,
-			PlayerID:          p.ID,
-			PlayerDisplayName: p.DisplayName,
-			RowNum:            ps.RowNum,
+			Score:             rankFromDB.Score,
+			PlayerID:          rankFromDB.PlayerID,
+			PlayerDisplayName: rankFromDB.PlayerDisplayName,
+			RowNum:            rankFromDB.RowNum,
 		})
 	}
 	sort.Slice(ranks, func(i, j int) bool {
