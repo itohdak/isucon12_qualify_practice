@@ -50,6 +50,7 @@ var (
 	adminDB *sqlx.DB
 
 	sqliteDriverName = "sqlite3"
+	tenantDBs        = map[int64]*sqlx.DB{}
 )
 
 // 環境変数を取得する、なければデフォルト値を返す
@@ -81,11 +82,17 @@ func tenantDBPath(id int64) string {
 
 // テナントDBに接続する
 func connectToTenantDB(id int64) (*sqlx.DB, error) {
+	if db, ok := tenantDBs[id]; ok {
+		return db, nil
+	}
 	p := tenantDBPath(id)
 	db, err := sqlx.Open(sqliteDriverName, fmt.Sprintf("file:%s?mode=rw&interpolateParams=true", p))
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open tenant DB: %w", err)
 	}
+	tenantDBs[id] = db
 	return db, nil
 }
 
@@ -181,6 +188,11 @@ func Run() {
 	adminDB.SetMaxIdleConns(512)
 	adminDB.SetMaxOpenConns(512)
 	defer adminDB.Close()
+	defer func() {
+		for _, db := range tenantDBs {
+			db.Close()
+		}
+	}()
 
 	port := getEnv("SERVER_APP_PORT", "3000")
 	e.Logger.Infof("starting isuports server on : %s ...", port)
@@ -679,7 +691,7 @@ func tenantsBillingHandler(c echo.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to connectToTenantDB: %w", err)
 			}
-			defer tenantDB.Close()
+			/* defer tenantDB.Close() */
 			cs := []CompetitionRow{}
 			if err := tenantDB.SelectContext(
 				ctx,
@@ -740,7 +752,7 @@ func playersListHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error connectToTenantDB: %w", err)
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	var pls []PlayerRow
 	if err := tenantDB.SelectContext(
@@ -786,7 +798,7 @@ func playersAddHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	params, err := c.FormParams()
 	if err != nil {
@@ -891,7 +903,7 @@ func playerDisqualifiedHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	playerID := c.Param("player_id")
 
@@ -951,7 +963,7 @@ func competitionsAddHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	title := c.FormValue("title")
 
@@ -997,7 +1009,7 @@ func competitionFinishHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	id := c.Param("competition_id")
 	if id == "" {
@@ -1047,7 +1059,7 @@ func competitionScoreHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	competitionID := c.Param("competition_id")
 	if competitionID == "" {
@@ -1097,6 +1109,7 @@ func competitionScoreHandler(c echo.Context) error {
 
 	var rowNum int64
 	playerScoreRows := []PlayerScoreRow{}
+	playerScoreRowsMap := map[string]PlayerScoreRow{}
 	for {
 		rowNum++
 		row, err := r.Read()
@@ -1132,7 +1145,7 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("error dispenseID: %w", err)
 		}
 		now := time.Now().Unix()
-		playerScoreRows = append(playerScoreRows, PlayerScoreRow{
+		/* playerScoreRows = append(playerScoreRows, PlayerScoreRow{
 			ID:            id,
 			TenantID:      v.tenantID,
 			PlayerID:      playerID,
@@ -1141,7 +1154,20 @@ func competitionScoreHandler(c echo.Context) error {
 			RowNum:        rowNum,
 			CreatedAt:     now,
 			UpdatedAt:     now,
-		})
+		}) */
+		playerScoreRowsMap[playerID] = PlayerScoreRow{
+			ID:            id,
+			TenantID:      v.tenantID,
+			PlayerID:      playerID,
+			CompetitionID: competitionID,
+			Score:         score,
+			RowNum:        rowNum,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+	}
+	for _, playerScoreRow := range playerScoreRowsMap {
+		playerScoreRows = append(playerScoreRows, playerScoreRow)
 	}
 
 	if _, err := tx.ExecContext(
@@ -1162,25 +1188,12 @@ func competitionScoreHandler(c echo.Context) error {
 			playerScoreRows, err,
 		)
 	}
-	/* for _, ps := range playerScoreRows {
-		if _, err := tx.NamedExecContext(
-			ctx,
-			"INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)",
-			ps,
-		); err != nil {
-			return fmt.Errorf(
-				"error Insert player_score: id=%s, tenant_id=%d, playerID=%s, competitionID=%s, score=%d, rowNum=%d, createdAt=%d, updatedAt=%d, %w",
-				ps.ID, ps.TenantID, ps.PlayerID, ps.CompetitionID, ps.Score, ps.RowNum, ps.CreatedAt, ps.UpdatedAt, err,
-			)
-
-		}
-	} */
 
 	tx.Commit()
 
 	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
-		Data:   ScoreHandlerResult{Rows: int64(len(playerScoreRows))},
+		Data:   ScoreHandlerResult{Rows: rowNum - 1},
 	})
 }
 
@@ -1205,7 +1218,7 @@ func billingHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	cs := []CompetitionRow{}
 	if err := tenantDB.SelectContext(
@@ -1262,7 +1275,7 @@ func playerHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
 		return err
@@ -1373,7 +1386,7 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
 		return err
@@ -1426,6 +1439,7 @@ func competitionRankingHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	pss := []PlayerScoreRow{}
+	// TODO: player_scoreをplayer,tenant,competitionごとにrow_numが最大のものだけを引いてこればよいようにする
 	if err := tx.SelectContext(
 		ctx,
 		&pss,
@@ -1513,7 +1527,7 @@ func playerCompetitionsHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
 		return err
@@ -1537,7 +1551,7 @@ func organizerCompetitionsHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tenantDB.Close()
+	/* defer tenantDB.Close() */
 
 	return competitionsHandler(c, v, tenantDB)
 }
