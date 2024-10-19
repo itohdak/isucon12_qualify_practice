@@ -1251,15 +1251,15 @@ func playerHandler(c echo.Context) error {
 		return fmt.Errorf("error retrievePlayer: %w", err)
 	}
 
-	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
+	/* // player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
 	tx, err := tenantDB.Beginx()
 	if err != nil {
 		return fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() */
 
 	psdsFromDB := []PlayerScoreDetailFromDB{}
-	if err := tx.SelectContext(
+	if err := tenantDB.SelectContext(
 		ctx,
 		&psdsFromDB,
 		"SELECT c.title AS competition_title, ps.score AS score"+
