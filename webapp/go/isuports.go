@@ -1463,7 +1463,7 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error retrievePlayers: %w", err)
 	}
-	if len(rows) != len(pss) {
+	if len(rows) != len(playerIDs) {
 		return fmt.Errorf("error retrievePlayers: number of record doesn't match")
 	}
 	playerInfo := map[string]PlayerRow{}
