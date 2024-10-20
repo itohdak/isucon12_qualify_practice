@@ -1372,7 +1372,7 @@ func competitionRankingHandler(c echo.Context) error {
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("error Select visit_history: player_id=%s, tenant_id=%d, competition_id=%s, %w", v.playerID, tenant.ID, competitionID, err)
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || len(row) == 0 {
 		if _, err := tx.ExecContext(
 			ctx,
 			"INSERT INTO visit_history (player_id, tenant_id, competition_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
