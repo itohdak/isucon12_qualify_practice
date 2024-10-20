@@ -619,15 +619,15 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
-	tx, err := tenantDB.Beginx()
+	/* tx, err := tenantDB.Beginx()
 	if err != nil {
 		return nil, fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() */
 
 	// スコアを登録した参加者のIDを取得する
 	scoredPlayerIDs := []string{}
-	if err = tx.SelectContext(
+	if err = tenantDB.SelectContext(
 		ctx,
 		&scoredPlayerIDs,
 		"SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
@@ -650,9 +650,9 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 			visitorCount++
 		}
 	}
-	if _, err := tx.ExecContext(
+	if _, err := tenantDB.ExecContext(
 		ctx,
-		"INSERT INTO billing_report (tenant_id, competition_id, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"REPLACE INTO billing_report (tenant_id, competition_id, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		tenantID, competitonID, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
 	); err != nil {
 		return nil, fmt.Errorf(
@@ -660,7 +660,6 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 			tenantID, competitonID, playerCount, visitorCount, err,
 		)
 	}
-	tx.Commit()
 	return &BillingReport{
 		CompetitionID:     comp.ID,
 		CompetitionTitle:  comp.Title,
