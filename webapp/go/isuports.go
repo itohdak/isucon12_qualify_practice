@@ -1443,14 +1443,14 @@ func competitionRankingHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
-	tx, err = tenantDB.Beginx()
+	/* tx, err = tenantDB.Beginx()
 	if err != nil {
 		return fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() */
 
 	ranksFromDB := []CompetitionRankFromDB{}
-	if err := tx.SelectContext(
+	if err := tenantDB.SelectContext(
 		ctx,
 		&ranksFromDB,
 		"SELECT ps.score AS score, ps.player_id AS player_id, p.display_name AS player_display_name, ps.row_num AS row_num"+
