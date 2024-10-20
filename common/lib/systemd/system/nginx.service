@@ -24,7 +24,7 @@ ExecReload=/usr/sbin/nginx -g 'daemon on; master_process on;' -s reload
 ExecStop=-/sbin/start-stop-daemon --quiet --stop --retry QUIT/5 --pidfile /run/nginx.pid
 TimeoutStopSec=5
 KillMode=mixed
-LimitNOFILE=16384
+LimitNOFILE=32768
 
 [Install]
 WantedBy=multi-user.target
