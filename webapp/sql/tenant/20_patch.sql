@@ -13,5 +13,8 @@ CREATE TABLE billing_report (
   competition_id VARRCHAR(255) NOT NULL,
   player_count BIGINT NOT NULL,
   visitor_count BIGINT NOT NULL,
+  billing_player_yen BIGINT NOT NULL,
+  billing_visitor_yen BIGINT NOT NULL,
+  billing_yen BIGINT NOT NULL,
   PRIMARY KEY (tenant_id, competition_id)
 );

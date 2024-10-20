@@ -563,11 +563,11 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 			"	c.title AS competition_title,"+
 			"	b.player_count AS player_count,"+
 			"	b.visitor_count AS visitor_count,"+
-			"	b.player_count*100 AS billing_player_yen,"+
-			"	b.visitor_count*10 AS billing_visitor_yen,"+
-			"	b.player_count*100 + b.visitor_count*10 AS billing_yen"+
+			"	b.billing_player_yen AS billing_player_yen,"+
+			"	b.billing_visitor_yen AS billing_visitor_yen,"+
+			"	b.billing_yen AS billing_yen"+
 			"	FROM billing_report b, competition c"+
-			"	WHERE b.tenant_id = ? AND b.competition_id = ? AND b.competition_id = c.id",
+			"	WHERE b.tenant_id = ? AND b.competition_id = ? AND b.competition_id = c.id AND b.tenant_id = c.tenant_id",
 		tenantID,
 		competitonID,
 	)
@@ -651,8 +651,8 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 		}
 		if _, err := tx.ExecContext(
 			ctx,
-			"INSERT INTO billing_report (tenant_id, competition_id, player_count, visitor_count) VALUES (?, ?, ?, ?)",
-			tenantID, competitonID, playerCount, visitorCount,
+			"INSERT INTO billing_report (tenant_id, competition_id, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			tenantID, competitonID, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
 		); err != nil {
 			return nil, fmt.Errorf(
 				"error Insert billing_report: tenantID=%d, competitionID=%s, player_count=%d, visitor_count=%d, %w",
