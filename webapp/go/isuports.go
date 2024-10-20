@@ -642,14 +642,12 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 
 	// 大会が終了している場合のみ請求金額が確定するので計算する
 	var playerCount, visitorCount int64
-	if comp.FinishedAt.Valid {
-		for _, category := range billingMap {
-			switch category {
-			case "player":
-				playerCount++
-			case "visitor":
-				visitorCount++
-			}
+	for _, category := range billingMap {
+		switch category {
+		case "player":
+			playerCount++
+		case "visitor":
+			visitorCount++
 		}
 		if _, err := tx.ExecContext(
 			ctx,
@@ -1419,16 +1417,34 @@ func competitionRankingHandler(c echo.Context) error {
 		return fmt.Errorf("error Select tenant: id=%d, %w", v.tenantID, err)
 	}
 
-	if _, err := adminDB.ExecContext(
-		ctx,
-		"INSERT INTO visit_history (player_id, tenant_id, competition_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		v.playerID, tenant.ID, competitionID, now, now,
-	); err != nil {
-		return fmt.Errorf(
-			"error Insert visit_history: playerID=%s, tenantID=%d, competitionID=%s, createdAt=%d, updatedAt=%d, %w",
-			v.playerID, tenant.ID, competitionID, now, now, err,
-		)
+	tx, err := adminDB.Beginx()
+	if err != nil {
+		return fmt.Errorf("error adminDB.Beginx, %w", err)
 	}
+	defer tx.Rollback()
+	row := []VisitHistoryRow{}
+	err = tx.SelectContext(
+		ctx,
+		&row,
+		"SELECT * FROM visit_history WHERE player_id = ? AND tenant_id = ? AND competition_id = ?",
+		v.playerID, tenant.ID, competitionID,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("error Select visit_history: player_id=%s, tenant_id=%d, competition_id=%s, %w", v.playerID, tenant.ID, competitionID, err)
+	}
+	if errors.Is(err, sql.ErrNoRows) || len(row) == 0 {
+		if _, err := tx.ExecContext(
+			ctx,
+			"INSERT INTO visit_history (player_id, tenant_id, competition_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+			v.playerID, tenant.ID, competitionID, now, now,
+		); err != nil {
+			return fmt.Errorf(
+				"error Insert visit_history: playerID=%s, tenantID=%d, competitionID=%s, createdAt=%d, updatedAt=%d, %w",
+				v.playerID, tenant.ID, competitionID, now, now, err,
+			)
+		}
+	}
+	tx.Commit()
 
 	var rankAfter int64
 	rankAfterStr := c.QueryParam("rank_after")
