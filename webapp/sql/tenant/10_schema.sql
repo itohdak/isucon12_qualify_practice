@@ -11,6 +11,7 @@ CREATE TABLE competition (
   updated_at BIGINT NOT NULL
 );
 CREATE INDEX idx_created_at_id_tenant_id ON competition (created_at, id, tenant_id);
+CREATE INDEX idx_id_tenant_id_created_at ON competition (id, tenant_id, created_at);
 
 CREATE TABLE player (
   id VARCHAR(255) NOT NULL PRIMARY KEY,
