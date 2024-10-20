@@ -87,8 +87,9 @@ func connectToTenantDB(id int64) (*sqlx.DB, error) {
 	}
 	p := tenantDBPath(id)
 	db, err := sqlx.Open(sqliteDriverName, fmt.Sprintf("file:%s?mode=rw&interpolateParams=true", p))
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(5 * time.Second)
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(5)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open tenant DB: %w", err)
 	}
@@ -530,13 +531,13 @@ func validateTenantName(name string) error {
 }
 
 type BillingReport struct {
-	CompetitionID     string `json:"competition_id"`
-	CompetitionTitle  string `json:"competition_title"`
-	PlayerCount       int64  `json:"player_count"`        // スコアを登録した参加者数
-	VisitorCount      int64  `json:"visitor_count"`       // ランキングを閲覧だけした(スコアを登録していない)参加者数
-	BillingPlayerYen  int64  `json:"billing_player_yen"`  // 請求金額 スコアを登録した参加者分
-	BillingVisitorYen int64  `json:"billing_visitor_yen"` // 請求金額 ランキングを閲覧だけした(スコアを登録していない)参加者分
-	BillingYen        int64  `json:"billing_yen"`         // 合計請求金額
+	CompetitionID     string `json:"competition_id" db:"competition_id"`
+	CompetitionTitle  string `json:"competition_title" db:"competition_title"`
+	PlayerCount       int64  `json:"player_count" db:"player_count"`               // スコアを登録した参加者数
+	VisitorCount      int64  `json:"visitor_count" db:"visitor_count"`             // ランキングを閲覧だけした(スコアを登録していない)参加者数
+	BillingPlayerYen  int64  `json:"billing_player_yen" db:"billing_player_yen"`   // 請求金額 スコアを登録した参加者分
+	BillingVisitorYen int64  `json:"billing_visitor_yen" db:"billing_visitor_yen"` // 請求金額 ランキングを閲覧だけした(スコアを登録していない)参加者分
+	BillingYen        int64  `json:"billing_yen" db:"billing_yen"`                 // 合計請求金額
 }
 
 type VisitHistoryRow struct {
@@ -554,6 +555,32 @@ type VisitHistorySummaryRow struct {
 
 // 大会ごとの課金レポートを計算する
 func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
+	var billingReport []BillingReport
+	err := tenantDB.SelectContext(
+		ctx,
+		&billingReport,
+		"SELECT b.competition_id AS competition_id,"+
+			"	c.title AS competition_title,"+
+			"	b.player_count AS player_count,"+
+			"	b.visitor_count AS visitor_count,"+
+			"	b.billing_player_yen AS billing_player_yen,"+
+			"	b.billing_visitor_yen AS billing_visitor_yen,"+
+			"	b.billing_yen AS billing_yen"+
+			"	FROM billing_report b, competition c"+
+			"	WHERE b.tenant_id = ? AND b.competition_id = ? AND b.competition_id = c.id AND b.tenant_id = c.tenant_id",
+		tenantID,
+		competitonID,
+	)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("error Select billing_report: %w", err)
+		}
+	} else {
+		if len(billingReport) > 0 {
+			return &billingReport[0], nil
+		}
+	}
+
 	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieveCompetition: %w", err)
@@ -592,15 +619,15 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
-	tx, err := tenantDB.Beginx()
+	/* tx, err := tenantDB.Beginx()
 	if err != nil {
 		return nil, fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() */
 
 	// スコアを登録した参加者のIDを取得する
 	scoredPlayerIDs := []string{}
-	if err = tx.SelectContext(
+	if err = tenantDB.SelectContext(
 		ctx,
 		&scoredPlayerIDs,
 		"SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
@@ -622,6 +649,16 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 		case "visitor":
 			visitorCount++
 		}
+	}
+	if _, err := tenantDB.ExecContext(
+		ctx,
+		"REPLACE INTO billing_report (tenant_id, competition_id, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		tenantID, competitonID, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"error Insert billing_report: tenantID=%d, competitionID=%s, player_count=%d, visitor_count=%d, %w",
+			tenantID, competitonID, playerCount, visitorCount, err,
+		)
 	}
 	return &BillingReport{
 		CompetitionID:     comp.ID,
@@ -1405,14 +1442,14 @@ func competitionRankingHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
-	tx, err = tenantDB.Beginx()
+	/* tx, err = tenantDB.Beginx()
 	if err != nil {
 		return fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() */
 
 	ranksFromDB := []CompetitionRankFromDB{}
-	if err := tx.SelectContext(
+	if err := tenantDB.SelectContext(
 		ctx,
 		&ranksFromDB,
 		"SELECT ps.score AS score, ps.player_id AS player_id, p.display_name AS player_display_name, ps.row_num AS row_num"+
