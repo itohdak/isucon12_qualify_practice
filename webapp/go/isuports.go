@@ -630,7 +630,7 @@ func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64,
 	}
 	if _, err := adminDB.ExecContext(
 		ctx,
-		"REPLACE INTO billing_report (tenant_id, competition_id, competition_title, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"REPLACE INTO billing_report (tenant_id, competition_id, competition_title, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		tenantID, competitonID, comp.Title, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
 	); err != nil {
 		return nil, fmt.Errorf(
