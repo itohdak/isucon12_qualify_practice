@@ -10,7 +10,7 @@ CREATE INDEX idx_tenant_id_competition_id_row_num ON player_score (tenant_id, co
 
 CREATE TABLE billing_report (
   tenant_id BIGINT NOT NULL,
-  competition_id VARRCHAR(255) NOT NULL,
+  competition_id VARCHAR(255) NOT NULL,
   player_count BIGINT NOT NULL,
   visitor_count BIGINT NOT NULL,
   billing_player_yen BIGINT NOT NULL,
