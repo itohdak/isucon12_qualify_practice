@@ -543,6 +543,7 @@ type BillingReport struct {
 type BillingReportFromDB struct {
 	TenantID          int64  `db:"tenant_id"`
 	CompetitionID     string `db:"competition_id"`
+	CompetitionTitle  string `db:"competition_title"`
 	PlayerCount       int64  `db:"player_count"`        // スコアを登録した参加者数
 	VisitorCount      int64  `db:"visitor_count"`       // ランキングを閲覧だけした(スコアを登録していない)参加者数
 	BillingPlayerYen  int64  `db:"billing_player_yen"`  // 請求金額 スコアを登録した参加者分
@@ -628,8 +629,8 @@ func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64,
 	}
 	if _, err := adminDB.ExecContext(
 		ctx,
-		"REPLACE INTO billing_report (tenant_id, competition_id, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		tenantID, competitonID, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
+		"REPLACE INTO billing_report (tenant_id, competition_id, competition_title, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		tenantID, competitonID, comp.Title, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
 	); err != nil {
 		return nil, fmt.Errorf(
 			"error Insert billing_report: tenantID=%d, competitionID=%s, player_count=%d, visitor_count=%d, %w",
@@ -664,13 +665,9 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 	} else {
 		if len(billingReportsFromDB) > 0 {
 			billingReportFromDB := billingReportsFromDB[0]
-			comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
-			if err != nil {
-				return nil, fmt.Errorf("error retrieveCompetition: %w", err)
-			}
 			return &BillingReport{
-				CompetitionID:     comp.ID,
-				CompetitionTitle:  comp.Title,
+				CompetitionID:     billingReportFromDB.CompetitionID,
+				CompetitionTitle:  billingReportFromDB.CompetitionTitle,
 				PlayerCount:       billingReportFromDB.PlayerCount,
 				VisitorCount:      billingReportFromDB.VisitorCount,
 				BillingPlayerYen:  billingReportFromDB.BillingPlayerYen,
