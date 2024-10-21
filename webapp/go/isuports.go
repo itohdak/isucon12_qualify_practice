@@ -553,34 +553,7 @@ type VisitHistorySummaryRow struct {
 	MinCreatedAt int64  `db:"min_created_at"`
 }
 
-// 大会ごとの課金レポートを計算する
-func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
-	var billingReport []BillingReport
-	err := tenantDB.SelectContext(
-		ctx,
-		&billingReport,
-		"SELECT b.competition_id AS competition_id,"+
-			"	c.title AS competition_title,"+
-			"	b.player_count AS player_count,"+
-			"	b.visitor_count AS visitor_count,"+
-			"	b.billing_player_yen AS billing_player_yen,"+
-			"	b.billing_visitor_yen AS billing_visitor_yen,"+
-			"	b.billing_yen AS billing_yen"+
-			"	FROM billing_report b, competition c"+
-			"	WHERE b.tenant_id = ? AND b.competition_id = ? AND b.competition_id = c.id AND b.tenant_id = c.tenant_id",
-		tenantID,
-		competitonID,
-	)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("error Select billing_report: %w", err)
-		}
-	} else {
-		if len(billingReport) > 0 {
-			return &billingReport[0], nil
-		}
-	}
-
+func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
 	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieveCompetition: %w", err)
@@ -617,13 +590,6 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 		}
 		billingMap[vh.PlayerID] = "visitor"
 	}
-
-	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでトランザクションを開始する
-	/* tx, err := tenantDB.Beginx()
-	if err != nil {
-		return nil, fmt.Errorf("error tenantDB.Beginx: %w", err)
-	}
-	defer tx.Rollback() */
 
 	// スコアを登録した参加者のIDを取得する
 	scoredPlayerIDs := []string{}
@@ -669,6 +635,42 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 		BillingVisitorYen: 10 * visitorCount, // ランキングを閲覧だけした(スコアを登録していない)参加者は10円
 		BillingYen:        100*playerCount + 10*visitorCount,
 	}, nil
+}
+
+// 大会ごとの課金レポートを計算する
+func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
+	var billingReports []BillingReport
+	err := tenantDB.SelectContext(
+		ctx,
+		&billingReports,
+		"SELECT b.competition_id AS competition_id,"+
+			"	c.title AS competition_title,"+
+			"	b.player_count AS player_count,"+
+			"	b.visitor_count AS visitor_count,"+
+			"	b.billing_player_yen AS billing_player_yen,"+
+			"	b.billing_visitor_yen AS billing_visitor_yen,"+
+			"	b.billing_yen AS billing_yen"+
+			"	FROM billing_report b, competition c"+
+			"	WHERE b.tenant_id = ? AND b.competition_id = ? AND b.competition_id = c.id AND b.tenant_id = c.tenant_id",
+		tenantID,
+		competitonID,
+	)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("error Select billing_report: %w", err)
+		}
+	} else {
+		if len(billingReports) > 0 {
+			return &billingReports[0], nil
+		}
+	}
+
+	billingReport, err := createBillingReport(ctx, tenantDB, tenantID, competitonID)
+	if err != nil {
+		return nil, fmt.Errorf("error createBillingReport: %w", err)
+	}
+
+	return billingReport, nil
 }
 
 type TenantWithBilling struct {
@@ -1048,6 +1050,7 @@ func competitionFinishHandler(c echo.Context) error {
 			now, now, id, err,
 		)
 	}
+	go createBillingReport(ctx, tenantDB, v.tenantID, id)
 	return c.JSON(http.StatusOK, SuccessResult{Status: true})
 }
 
