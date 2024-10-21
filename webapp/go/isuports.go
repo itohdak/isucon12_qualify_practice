@@ -540,6 +540,16 @@ type BillingReport struct {
 	BillingYen        int64  `json:"billing_yen" db:"billing_yen"`                 // 合計請求金額
 }
 
+type BillingReportFromDB struct {
+	TenantID          int64  `db:"tenant_id"`
+	CompetitionID     string `db:"competition_id"`
+	PlayerCount       int64  `db:"player_count"`        // スコアを登録した参加者数
+	VisitorCount      int64  `db:"visitor_count"`       // ランキングを閲覧だけした(スコアを登録していない)参加者数
+	BillingPlayerYen  int64  `db:"billing_player_yen"`  // 請求金額 スコアを登録した参加者分
+	BillingVisitorYen int64  `db:"billing_visitor_yen"` // 請求金額 ランキングを閲覧だけした(スコアを登録していない)参加者分
+	BillingYen        int64  `db:"billing_yen"`         // 合計請求金額
+}
+
 type VisitHistoryRow struct {
 	PlayerID      string `db:"player_id"`
 	TenantID      int64  `db:"tenant_id"`
@@ -616,7 +626,7 @@ func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64,
 			visitorCount++
 		}
 	}
-	if _, err := tenantDB.ExecContext(
+	if _, err := adminDB.ExecContext(
 		ctx,
 		"REPLACE INTO billing_report (tenant_id, competition_id, player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		tenantID, competitonID, playerCount, visitorCount, 100*playerCount, 10*visitorCount, 100*playerCount+10*visitorCount,
@@ -639,19 +649,11 @@ func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64,
 
 // 大会ごとの課金レポートを計算する
 func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
-	var billingReports []BillingReport
-	err := tenantDB.SelectContext(
+	var billingReportsFromDB []BillingReportFromDB
+	err := adminDB.SelectContext(
 		ctx,
-		&billingReports,
-		"SELECT b.competition_id AS competition_id,"+
-			"	c.title AS competition_title,"+
-			"	b.player_count AS player_count,"+
-			"	b.visitor_count AS visitor_count,"+
-			"	b.billing_player_yen AS billing_player_yen,"+
-			"	b.billing_visitor_yen AS billing_visitor_yen,"+
-			"	b.billing_yen AS billing_yen"+
-			"	FROM billing_report b, competition c"+
-			"	WHERE b.tenant_id = ? AND b.competition_id = ? AND b.competition_id = c.id AND b.tenant_id = c.tenant_id",
+		&billingReportsFromDB,
+		"SELECT * FROM billing_report WHERE tenant_id = ? AND competition_id = ?",
 		tenantID,
 		competitonID,
 	)
@@ -660,8 +662,21 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 			return nil, fmt.Errorf("error Select billing_report: %w", err)
 		}
 	} else {
-		if len(billingReports) > 0 {
-			return &billingReports[0], nil
+		if len(billingReportsFromDB) > 0 {
+			billingReportFromDB := billingReportsFromDB[0]
+			comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
+			if err != nil {
+				return nil, fmt.Errorf("error retrieveCompetition: %w", err)
+			}
+			return &BillingReport{
+				CompetitionID:     comp.ID,
+				CompetitionTitle:  comp.Title,
+				PlayerCount:       billingReportFromDB.PlayerCount,
+				VisitorCount:      billingReportFromDB.VisitorCount,
+				BillingPlayerYen:  billingReportFromDB.BillingPlayerYen,
+				BillingVisitorYen: billingReportFromDB.BillingVisitorYen,
+				BillingYen:        billingReportFromDB.BillingYen,
+			}, nil
 		}
 	}
 
