@@ -26,4 +26,4 @@ CREATE INDEX idx_tenant_id_competition_id_player_id_created_at ON visit_history_
 DROP TABLE visit_history;
 ALTER TABLE visit_history_tmp RENAME visit_history; */
 
-TRUNCATE billing_report;
+TRUNCATE TABLE billing_report;

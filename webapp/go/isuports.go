@@ -586,17 +586,18 @@ func createBillingReportForInitialization() error {
 		go func(id int64) {
 			tenantDB, err := connectToTenantDB(id)
 			if err != nil {
-				return fmt.Errorf("error connect to tenantDB: %w", err)
+				/* return fmt.Errorf("error connect to tenantDB: %w", err) */
 			}
 			competitionRow := []CompetitionRow{}
 			if err = tenantDB.Select(
 				&competitionRow,
 				"SELECT * FROM competition WHERE finished_at IS NOT NULL",
 			); err != nil {
-				return fmt.Errorf("error Select competition finished: %w", err)
+				/* return fmt.Errorf("error Select competition finished: %w", err) */
 			}
+			var ctx context.Context
 			for _, competition := range competitionRow {
-				go createBillingReport(context.Context{}, tenantDB, id, competition.ID)
+				go createBillingReport(ctx, tenantDB, id, competition.ID)
 			}
 		}(id)
 	}
