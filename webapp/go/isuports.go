@@ -99,7 +99,7 @@ func connectToTenantDB(id int64) (*sqlx.DB, error) {
 			return nil, fmt.Errorf("failed to Select tenant: id=%s, %w", id, err)
 		}
 		if err := createTenantDB(id); err != nil {
-			return fmt.Errorf("error createTenantDB: id=%d name=%s %w", id, tenant.Name, err)
+			return nil, fmt.Errorf("error createTenantDB: id=%d name=%s %w", id, tenant.Name, err)
 		}
 	}
 	db, err := sqlx.Open(sqliteDriverName, fmt.Sprintf("file:%s?mode=rw&interpolateParams=true", p))
