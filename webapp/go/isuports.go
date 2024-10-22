@@ -87,6 +87,21 @@ func connectToTenantDB(id int64) (*sqlx.DB, error) {
 		return db, nil
 	}
 	p := tenantDBPath(id)
+	_, err := os.Stat(p)
+	if err != nil {
+		var tenant TenantRow
+		if err := adminDB.GetContext(
+			context.Background(),
+			&tenant,
+			"SELECT * FROM tenant WHERE id = ?",
+			id,
+		); err != nil {
+			return nil, fmt.Errorf("failed to Select tenant: id=%s, %w", id, err)
+		}
+		if err := createTenantDB(id); err != nil {
+			return nil, fmt.Errorf("error createTenantDB: id=%d name=%s %w", id, tenant.Name, err)
+		}
+	}
 	db, err := sqlx.Open(sqliteDriverName, fmt.Sprintf("file:%s?mode=rw&interpolateParams=true", p))
 	db.SetConnMaxLifetime(5 * time.Second)
 	db.SetMaxOpenConns(5)
@@ -508,9 +523,9 @@ func tenantsAddHandler(c echo.Context) error {
 	// NOTE: 先にadminDBに書き込まれることでこのAPIの処理中に
 	//       /api/admin/tenants/billingにアクセスされるとエラーになりそう
 	//       ロックなどで対処したほうが良さそう
-	if err := createTenantDB(id); err != nil {
+	/* if err := createTenantDB(id); err != nil {
 		return fmt.Errorf("error createTenantDB: id=%d name=%s %w", id, name, err)
-	}
+	} */
 
 	res := TenantsAddHandlerResult{
 		Tenant: TenantWithBilling{
@@ -565,6 +580,31 @@ type VisitHistorySummaryRow struct {
 	MinCreatedAt int64  `db:"min_created_at"`
 }
 
+func createBillingReportForInitialization(ctx context.Context) error {
+	var id int64
+	for id = 1; id <= 100; id++ {
+		if err := func(id int64) error {
+			tenantDB, err := connectToTenantDB(id)
+			if err != nil {
+				return fmt.Errorf("error connect to tenantDB: %w", err)
+			}
+			competitionRow := []CompetitionRow{}
+			if err = tenantDB.Select(
+				&competitionRow,
+				"SELECT * FROM competition WHERE finished_at IS NOT NULL",
+			); err != nil {
+				return fmt.Errorf("error Select competition finished: %w", err)
+			}
+			for _, competition := range competitionRow {
+				createBillingReport(ctx, tenantDB, id, competition.ID)
+			}
+			return nil
+		}(id); err != nil {
+			return fmt.Errorf("error createBillingReportForInitialization: %w", err)
+		}
+	}
+	return nil
+}
 func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
 	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
 	if err != nil {
@@ -687,10 +727,10 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 }
 
 type TenantWithBilling struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	BillingYen  int64  `json:"billing"`
+	ID          string `json:"id" db:"id"`
+	Name        string `json:"name" db:"name"`
+	DisplayName string `json:"display_name" db:"display_name"`
+	BillingYen  int64  `json:"billing" db:"billing_yen"`
 }
 
 type TenantsBillingHandlerResult struct {
@@ -728,56 +768,21 @@ func tenantsBillingHandler(c echo.Context) error {
 			)
 		}
 	}
-	// テナントごとに
-	//   大会ごとに
-	//     scoreが登録されているplayer * 100
-	//     scoreが登録されていないplayerでアクセスした人 * 10
-	//   を合計したものを
-	// テナントの課金とする
-	ts := []TenantRow{}
-	if err := adminDB.SelectContext(ctx, &ts, "SELECT * FROM tenant ORDER BY id DESC"); err != nil {
-		return fmt.Errorf("error Select tenant: %w", err)
+	tenantBillings := []TenantWithBilling{}
+	if beforeID == 0 {
+		beforeID = 10000000 // 大きい数
 	}
-	tenantBillings := make([]TenantWithBilling, 0, len(ts))
-	for _, t := range ts {
-		if beforeID != 0 && beforeID <= t.ID {
-			continue
-		}
-		err := func(t TenantRow) error {
-			tb := TenantWithBilling{
-				ID:          strconv.FormatInt(t.ID, 10),
-				Name:        t.Name,
-				DisplayName: t.DisplayName,
-			}
-			tenantDB, err := connectToTenantDB(t.ID)
-			if err != nil {
-				return fmt.Errorf("failed to connectToTenantDB: %w", err)
-			}
-			cs := []CompetitionRow{}
-			if err := tenantDB.SelectContext(
-				ctx,
-				&cs,
-				"SELECT * FROM competition WHERE tenant_id=?",
-				t.ID,
-			); err != nil {
-				return fmt.Errorf("failed to Select competition: %w", err)
-			}
-			for _, comp := range cs {
-				report, err := billingReportByCompetition(ctx, tenantDB, t.ID, comp.ID)
-				if err != nil {
-					return fmt.Errorf("failed to billingReportByCompetition: %w", err)
-				}
-				tb.BillingYen += report.BillingYen
-			}
-			tenantBillings = append(tenantBillings, tb)
-			return nil
-		}(t)
-		if err != nil {
-			return err
-		}
-		if len(tenantBillings) >= 10 {
-			break
-		}
+	if err := adminDB.SelectContext(
+		ctx,
+		&tenantBillings,
+		"SELECT tenant_id AS id, name AS name, display_name, SUM(billing_yen) AS billing_yen"+
+			"	FROM billing_report, tenant"+
+			"	WHERE billing_report.tenant_id = tenant.id AND tenant_id < ?"+
+			"	GROUP BY tenant_id"+
+			"	ORDER BY tenant_id DESC"+
+			"	LIMIT 10",
+		beforeID); err != nil {
+		return fmt.Errorf("error Select billing_report: %w", err)
 	}
 	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
@@ -1702,6 +1707,7 @@ func initializeHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error exec.Command: %s %e", string(out), err)
 	}
+	createBillingReportForInitialization(context.Background())
 	res := InitializeHandlerResult{
 		Lang: "go",
 	}
