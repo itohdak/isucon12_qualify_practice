@@ -87,6 +87,21 @@ func connectToTenantDB(id int64) (*sqlx.DB, error) {
 		return db, nil
 	}
 	p := tenantDBPath(id)
+	_, err := os.Stat(p)
+	if err != nil {
+		var tenant TenantRow
+		if err := adminDB.GetContext(
+			context.Background(),
+			&tenant,
+			"SELECT * FROM tenant WHERE id = ?",
+			id,
+		); err != nil {
+			return nil, fmt.Errorf("failed to Select tenant: id=%s, %w", id, err)
+		}
+		if err := createTenantDB(id); err != nil {
+			return fmt.Errorf("error createTenantDB: id=%d name=%s %w", id, tenant.Name, err)
+		}
+	}
 	db, err := sqlx.Open(sqliteDriverName, fmt.Sprintf("file:%s?mode=rw&interpolateParams=true", p))
 	db.SetConnMaxLifetime(5 * time.Second)
 	db.SetMaxOpenConns(5)
@@ -508,9 +523,9 @@ func tenantsAddHandler(c echo.Context) error {
 	// NOTE: 先にadminDBに書き込まれることでこのAPIの処理中に
 	//       /api/admin/tenants/billingにアクセスされるとエラーになりそう
 	//       ロックなどで対処したほうが良さそう
-	if err := createTenantDB(id); err != nil {
+	/* if err := createTenantDB(id); err != nil {
 		return fmt.Errorf("error createTenantDB: id=%d name=%s %w", id, name, err)
-	}
+	} */
 
 	res := TenantsAddHandlerResult{
 		Tenant: TenantWithBilling{
