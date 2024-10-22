@@ -580,6 +580,28 @@ type VisitHistorySummaryRow struct {
 	MinCreatedAt int64  `db:"min_created_at"`
 }
 
+func createBillingReportForInitialization() error {
+	var id int64
+	for id = 1; id <= 100; id++ {
+		go func(id int64) {
+			tenantDB, err := connectToTenantDB(id)
+			if err != nil {
+				return fmt.Errorf("error connect to tenantDB: %w", err)
+			}
+			competitionRow := []CompetitionRow{}
+			if err = tenantDB.Select(
+				&competitionRow,
+				"SELECT * FROM competition WHERE finished_at IS NOT NULL",
+			); err != nil {
+				return fmt.Errorf("error Select competition finished: %w", err)
+			}
+			for _, competition := range competitionRow {
+				go createBillingReport(context.Context{}, tenantDB, id, competition.ID)
+			}
+		}(id)
+	}
+	return nil
+}
 func createBillingReport(ctx context.Context, tenantDB *sqlx.DB, tenantID int64, competitonID string) (*BillingReport, error) {
 	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
 	if err != nil {
@@ -1682,6 +1704,7 @@ func initializeHandler(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("error exec.Command: %s %e", string(out), err)
 	}
+	createBillingReportForInitialization()
 	res := InitializeHandlerResult{
 		Lang: "go",
 	}
