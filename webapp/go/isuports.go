@@ -757,7 +757,7 @@ func tenantsBillingHandler(c echo.Context) error {
 			"	ORDER BY tenant_id DESC"+
 			"	LIMIT 10",
 		beforeID); err != nil {
-		return fmt.Errorf("error Select billing_report")
+		return fmt.Errorf("error Select billing_report: %w", err)
 	}
 	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
