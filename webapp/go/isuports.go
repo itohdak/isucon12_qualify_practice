@@ -702,10 +702,10 @@ func billingReportByCompetition(ctx context.Context, tenantDB *sqlx.DB, tenantID
 }
 
 type TenantWithBilling struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	BillingYen  int64  `json:"billing"`
+	ID          string `json:"id" db:"id"`
+	Name        string `json:"name" db:"name"`
+	DisplayName string `json:"display_name" db:"display_name"`
+	BillingYen  int64  `json:"billing" db:"billing_yen"`
 }
 
 type TenantsBillingHandlerResult struct {
