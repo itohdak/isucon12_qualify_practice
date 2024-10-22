@@ -743,56 +743,21 @@ func tenantsBillingHandler(c echo.Context) error {
 			)
 		}
 	}
-	// テナントごとに
-	//   大会ごとに
-	//     scoreが登録されているplayer * 100
-	//     scoreが登録されていないplayerでアクセスした人 * 10
-	//   を合計したものを
-	// テナントの課金とする
-	ts := []TenantRow{}
-	if err := adminDB.SelectContext(ctx, &ts, "SELECT * FROM tenant ORDER BY id DESC"); err != nil {
-		return fmt.Errorf("error Select tenant: %w", err)
+	tenantBillings := []TenantWithBilling{}
+	if beforeID == 0 {
+		beforeID = 10000000 // 大きい数
 	}
-	tenantBillings := make([]TenantWithBilling, 0, len(ts))
-	for _, t := range ts {
-		if beforeID != 0 && beforeID <= t.ID {
-			continue
-		}
-		err := func(t TenantRow) error {
-			tb := TenantWithBilling{
-				ID:          strconv.FormatInt(t.ID, 10),
-				Name:        t.Name,
-				DisplayName: t.DisplayName,
-			}
-			tenantDB, err := connectToTenantDB(t.ID)
-			if err != nil {
-				return fmt.Errorf("failed to connectToTenantDB: %w", err)
-			}
-			cs := []CompetitionRow{}
-			if err := tenantDB.SelectContext(
-				ctx,
-				&cs,
-				"SELECT * FROM competition WHERE tenant_id=?",
-				t.ID,
-			); err != nil {
-				return fmt.Errorf("failed to Select competition: %w", err)
-			}
-			for _, comp := range cs {
-				report, err := billingReportByCompetition(ctx, tenantDB, t.ID, comp.ID)
-				if err != nil {
-					return fmt.Errorf("failed to billingReportByCompetition: %w", err)
-				}
-				tb.BillingYen += report.BillingYen
-			}
-			tenantBillings = append(tenantBillings, tb)
-			return nil
-		}(t)
-		if err != nil {
-			return err
-		}
-		if len(tenantBillings) >= 10 {
-			break
-		}
+	if err := adminDB.SelectContext(
+		ctx,
+		&tenantBillings,
+		"SELECT tenant_id AS id, name AS name, display_name, SUM(billing_yen) AS billing_yen"+
+			"	FROM billing_report, tenant"+
+			"	WHERE billing_report.tenant_id = tenant.id AND tenant_id < ?"+
+			"	GROUP BY tenant_id"+
+			"	ORDER BY tenant_id DESC"+
+			"	LIMIT 10",
+		beforeID); err != nil {
+		return fmt.Errorf("error Select billing_report")
 	}
 	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
